@@ -10,21 +10,21 @@ class MyCovertChannel(CovertChannelBase):
 
     def send(self, log_file_name, parameter1=None, parameter2=None):
         """
-        - Creates a DNS packet with the AD flag set to 0.
-        - Sends the packet using the `send` method from CovertChannelBase.
+        This function is used for encoding the message. It gets the random binary message, and sends it to the encode_message function. After that, it iterates 
+        over the result, sets the AD flag accordingly and sends the packet.
         """
-        # Craft the DNS packet
         receiver_ip = parameter2
 
         binary_message = self.generate_random_binary_message_with_logging(log_file_name)
 
-        needed_field_count = self.max_length(255, parameter1)
-        bit_per_field = self.max_length(parameter1,2)
+        needed_field_count = self.max_length(255, parameter1) # Holds how many fields will be used for the given parameter1
+        bit_per_field = self.max_length(parameter1, 2) # Holds how many bits will be used for each field
 
-        for x in range(0, len(binary_message), 8):
-            encoded_list = self.encode_message(needed_field_count, self.convert_to_base(int(binary_message[x:x+8],2), parameter1), bit_per_field)
-            for bit in encoded_list:
-                time.sleep(0.05)  # Adjust the delay as needed
+
+        for x in range(0, len(binary_message), 8): # Goes char by char, hence step is 8 (8 bits)
+            encoded_list = self.encode_message(needed_field_count, self.convert_to_base(int(binary_message[x:x+8],2), parameter1), bit_per_field) # Create the encoded message
+            for bit in encoded_list: # Send encoded message bit by bit inside for loop
+                time.sleep(0.05)  # Adjusting the delay
                 packet = None
                 if int(bit) == 1:
                     packet = IP(dst=receiver_ip) / UDP(dport=53) / DNS(rd=1, ad=1, qd=DNSQR(qname="example.com"))
@@ -34,13 +34,19 @@ class MyCovertChannel(CovertChannelBase):
 
 
     def receive(self, parameter1=None, parameter2=None, parameter3=None, log_file_name=None):
+        """
+        This function receives the bits as the packets arrive. As the bits comes it stores them in the collected_bits variable. If length of collected_bits
+        reaches the char_length, the algorithm decodes the content of the collected_bits, and equals to result to a variable last_character. Then it adds
+        last_character to final_message. The reason there is a last_character variable is to control whether the "." is reached or not. After "." is reached,
+        it logs the final message to log_file, and exits.
+        """
         final_message = ''
         last_character = ''
 
-        needed_field_count = self.max_length(255, parameter1)
-        bit_per_field = self.max_length(parameter1,2)
-        char_length = needed_field_count*bit_per_field
-        collected_bits = []
+        needed_field_count = self.max_length(255, parameter1) # Holds how many fields will be used for the given parameter1
+        bit_per_field = self.max_length(parameter1, 2) # Holds how many bits will be used for each field
+        char_length = needed_field_count*bit_per_field # Holds how many bits correspond to a char
+        collected_bits = [] # Holds the received bits
         def process_packet(packet):
             nonlocal collected_bits
             nonlocal last_character
@@ -49,11 +55,10 @@ class MyCovertChannel(CovertChannelBase):
                 dns_layer = packet[DNS]
                 ad_flag = dns_layer.ad
                 collected_bits.append(int(ad_flag))
-                if len(collected_bits) == char_length:
-                    last_character = chr(self.decode_message(needed_field_count, bit_per_field, collected_bits, parameter1))
+                if len(collected_bits) == char_length: # When enough bits are received
+                    last_character = chr(self.decode_message(needed_field_count, bit_per_field, collected_bits, parameter1)) # Decode the char and store it in last_character
                     collected_bits = []
-                    print(last_character, flush=True, end='')# Sil
-                    final_message = final_message+last_character
+                    final_message = final_message+last_character 
         while True:
             packets = sniff(filter="udp port 53", prn=process_packet, timeout=1, count=1)
             if last_character == '.':
@@ -65,7 +70,12 @@ class MyCovertChannel(CovertChannelBase):
 
 
     def max_length(self, max_num_to_be_presented, parameter):
-        max_num_to_be_presented
+        """
+        This function returns how many fields are required to represent max_num_to_be_presented in base parameter
+        For example:
+        max_num_to_be_presented = 255, parameter = 2
+        return 8
+        """
         count = 0
         while max_num_to_be_presented > 0:
             max_num_to_be_presented = max_num_to_be_presented // parameter
@@ -73,44 +83,64 @@ class MyCovertChannel(CovertChannelBase):
         return count
 
     def convert_to_base(self, num, parameter):
+        """
+        This function returns num representation in base parameter as a list
+        For example:
+        num =127 parameter=5
+        return [1,0,0,2]
+        """
         counts = []
         while num > 0:
             counts.append(num % parameter)
             num = num // parameter
         return counts[::-1]
 
-    def write_num_in_binary(self, number, each_index_long):
-        encoded_list = []
-        for i in range(each_index_long-1, -1, -1):
+    def write_num_in_binary(self, number, field_amount):
+        """
+        Returns the binary writing of number using field_amount length
+        For example:
+        number = 5, field_amount = 6
+        return [0,0,0,1,0,1]
+        """
+        binary_list = []
+        for i in range(field_amount-1, -1, -1):
             powered_value = pow(2, i)
             if number >= powered_value:
                 number -= powered_value
-                encoded_list += [1]
+                binary_list += [1]
             else:
-                encoded_list += [0]
+                binary_list += [0]
+        return binary_list
+
+
+    def encode_message(self, amount_of_field, number_in_field, bit_per_field):
+        """
+        Returns the encoded message. Gets how many field (amount_of_field) there should be, each fields number (number_in_field) and how many bits will be used to represent each field (bit_per_field)
+        """
+        encoded_list = [0] * (amount_of_field-len(number_in_field))*bit_per_field
+        for x in number_in_field:
+            encoded_list += self.write_num_in_binary(x, bit_per_field)
         return encoded_list
 
-
-    def encode_message(self, length, counts_of_indexes, each_index_long):
-        encoded_list = [0] * (length-len(counts_of_indexes))*each_index_long
-        for x in counts_of_indexes:
-            encoded_list += self.write_num_in_binary(x, each_index_long)
-        return encoded_list
-
-    def get_value_of_base(self, encoded,base):
+    def get_value_of_base(self, encoded, base_k):
+        """
+        encoded represents a number that is written in base-base_k, this function returns the same number in base-10
+        """
         count = 0
         result = 0
         for x in encoded[::-1]:
-            result += x * pow(base, count)
+            result += x * pow(base_k, count)
             count += 1
         return result
 
-    def decode_message(self, needed_field_count, bit_per_field, encoded, parameter):
-        message_length = needed_field_count*bit_per_field
+    def decode_message(self, amount_of_field, bit_per_field, encoded, parameter):
+        """
+        Returns the decoded char value. Gets how many field (amount_of_field) there should be, how many bits will be used to represent each field (bit_per_field)
+        encoded is the encoded message and we get the parameter
+        """
+        message_length = amount_of_field*bit_per_field
         result_list = []
         for x in range(0, message_length, bit_per_field):
            result_list.append(self.get_value_of_base(encoded[x:x+bit_per_field], 2))
 
-        return self.get_value_of_base(result_list,parameter)
-
-
+        return self.get_value_of_base(result_list, parameter)
