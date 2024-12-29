@@ -1,17 +1,15 @@
 {
-  "covert_channel_code": "Replace it with the [Code] of chosen covert channel type seen in ODTUClass.",
+  "covert_channel_code": "CSC-PSV-DNS-ADF",
   "send": {
     "parameters": {
-      "parameter1": "p1",
-      "parameter2": 1234,
+      "parameter1": 256,
+      "parameter2": "receiver",
       "log_file_name": "Example_UDPTimingInterarrivalChannelSender.log"
     }
   },
   "receive": {
     "parameters": {
-      "parameter1": "p1",
-      "parameter2": 1234,
-      "parameter3": "p3",
+      "parameter1": 256,
       "log_file_name": "Example_UDPTimingInterarrivalChannelReceiver.log"
     }
   }
